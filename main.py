@@ -50,6 +50,73 @@ bubble_text = bubble_font.render("MEOW", True, (0,0,0))
 bubble_show = False
 bubble_timer = 0
 
+# --- Pet Stats (0-100) ---
+health = 100.0
+happiness = 80.0
+energy = 90.0
+hunger = 100.0  # 100 = full, 0 = starving
+
+# Time tracking for stat decay (every 1s)
+last_stat_tick = pygame.time.get_ticks()
+
+# Simple helper to keep values in range
+def clamp(v):
+    if v < 0: return 0
+    if v > 100: return 100
+    return v
+
+def draw_stat_bar(target_surface, stat_label, stat_value, pos_x, pos_y, bar_width=160, bar_height=18):
+    """Draw a single horizontal stat bar.
+
+    Args:
+        target_surface: Pygame surface to draw onto.
+        stat_label: Text label for the stat (e.g. "Health").
+        stat_value: Numeric value expected in range 0..100.
+        pos_x, pos_y: Top-left coordinates for the bar.
+        bar_width, bar_height: Dimensions of the bar.
+    """
+    # --- Colors & normalization ---
+    BAR_BG = (35, 35, 35)
+    BORDER = (0, 0, 0)
+    # Color anchors for interpolation
+    LOW_COLOR = (220, 40, 40)     # Red-ish
+    MID_COLOR = (220, 200, 40)    # Yellow
+    HIGH_COLOR = (60, 200, 90)    # Green-ish
+
+    fill_ratio = max(0.0, min(1.0, stat_value / 100.0))  # clamp 0..1
+
+    # Two-phase interpolation: LOW -> MID (0..0.5), then MID -> HIGH (0.5..1)
+    if fill_ratio < 0.5:
+        phase = fill_ratio / 0.5  # 0..1
+        color_r = int(LOW_COLOR[0] + (MID_COLOR[0] - LOW_COLOR[0]) * phase)
+        color_g = int(LOW_COLOR[1] + (MID_COLOR[1] - LOW_COLOR[1]) * phase)
+        color_b = int(LOW_COLOR[2] + (MID_COLOR[2] - LOW_COLOR[2]) * phase)
+    else:
+        phase = (fill_ratio - 0.5) / 0.5  # 0..1
+        color_r = int(MID_COLOR[0] + (HIGH_COLOR[0] - MID_COLOR[0]) * phase)
+        color_g = int(MID_COLOR[1] + (HIGH_COLOR[1] - MID_COLOR[1]) * phase)
+        color_b = int(MID_COLOR[2] + (HIGH_COLOR[2] - MID_COLOR[2]) * phase)
+
+    # --- Draw background ---
+    pygame.draw.rect(target_surface, BAR_BG, (pos_x, pos_y, bar_width, bar_height), border_radius=5)
+
+    # --- Draw fill ---
+    filled_width = int(bar_width * fill_ratio)
+    if filled_width > 0:
+        pygame.draw.rect(
+            target_surface,
+            (color_r, color_g, color_b),
+            (pos_x, pos_y, filled_width, bar_height),
+            border_radius=5,
+        )
+
+    # --- Border ---
+    pygame.draw.rect(target_surface, BORDER, (pos_x, pos_y, bar_width, bar_height), 2, border_radius=5)
+
+    # --- Label (value truncated to int) ---
+    label_surface = font.render(f"{stat_label}: {int(stat_value)}", True, WHITE)
+    target_surface.blit(label_surface, (pos_x, pos_y - 22))
+
 # --- Game Loop ---
 running = True
 clock = pygame.time.Clock()
@@ -69,6 +136,30 @@ while running:
                 speak_button_y <= mouse_pos[1] <= speak_button_y + speak_button_height):
                 bubble_show = True
                 bubble_timer = pygame.time.get_ticks()
+
+    # --- Update Stats (decay every second) ---
+    now = pygame.time.get_ticks()
+    if now - last_stat_tick >= 1000:  # once per second
+        last_stat_tick = now
+        # Natural decay
+        hunger -= 2.5      # gets hungry
+        energy -= 1.2      # tires out slowly
+        happiness -= 0.6   # drifts down slightly
+
+        # Conditional effects
+        if hunger < 35:
+            health -= 1.2
+            happiness -= 0.8
+        if energy < 25:
+            happiness -= 0.7
+        if hunger > 70 and energy > 60 and happiness > 60 and health < 100:
+            health += 0.8  # mild regen when well cared for
+
+        # Clamp values
+        health = clamp(health)
+        happiness = clamp(happiness)
+        energy = clamp(energy)
+        hunger = clamp(hunger)
 
     # Draw background
     screen.blit(background, (0, 0))
@@ -93,6 +184,21 @@ while running:
     pygame.draw.rect(screen, speak_color, (speak_button_x, speak_button_y, speak_button_width, speak_button_height), border_radius=8)
     speak_text_rect = speak_button_text.get_rect(center=(speak_button_x + speak_button_width // 2, speak_button_y + speak_button_height // 2))
     screen.blit(speak_button_text, speak_text_rect)
+
+    # --- Draw Pet Stats ---
+    stats_x = 40
+    stats_top = 60
+    gap = 60
+    draw_stat_bar(screen, "Health", health, stats_x, stats_top)
+    draw_stat_bar(screen, "Happiness", happiness, stats_x, stats_top + gap)
+    draw_stat_bar(screen, "Energy", energy, stats_x, stats_top + gap*2)
+    draw_stat_bar(screen, "Hunger", hunger, stats_x, stats_top + gap*3)
+
+    # Flash a subtle red overlay if health is critical
+    if health < 25 and (now // 400) % 2 == 0:
+        warn = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        warn.fill((255,0,0,35))
+        screen.blit(warn, (0,0))
 
     # Draw speech bubble if needed
     if bubble_show:
