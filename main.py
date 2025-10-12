@@ -24,8 +24,8 @@ pet = pygame.transform.scale(pet, (200, 200))
 
 # --- Load (optional) run animation frames ---
 run_frame_paths = [
-    "assets/kitty_run_side/kitty_run_1.png",
-    "assets/kitty_run_side/kitty_run_2.png"
+    "assets/kitty_run_side/kitty_run_1.svg",
+    "assets/kitty_run_side/kitty_run_2.svg"
 ]
 run_frames = []
 for p in run_frame_paths:
